@@ -1,4 +1,3 @@
-````markdown
 # 💬 Bubbles — Memory-Enabled LangGraph Chatbot
 
 <p align="center">
@@ -1509,7 +1508,7 @@ It demonstrates how **conversation state, persistent user memory, tool calling, 
 
 ## 👨‍💻 Author
 
-**Sourashish Das**
+**Sourasish Das**
 
 Built as an exploration of:
 
@@ -1528,24 +1527,3 @@ Built as an exploration of:
 
 Your original Table of Contents had links like:
 
-```text
-https://claude.ai/chat/...
-```
-
-Those **should not be in your GitHub README**. GitHub automatically handles internal heading links, so if you want a TOC, use:
-
-```markdown
-## 📚 Table of Contents
-
-- [✨ What It Does](#-what-it-does)
-- [🏗️ Architecture at a Glance](#️-architecture-at-a-glance)
-- [🧠 How Memory Works](#-how-memory-works)
-- [🏷️ How Thread Titles Work](#️-how-thread-titles-work)
-- [🗃️ Project Structure](#️-project-structure)
-- [🛠️ Tech Stack](#️-tech-stack)
-- [🚀 Setup](#-setup)
-- [🔮 Extending Bubbles](#-extending-bubbles)
-- [🗺️ Roadmap](#️-roadmap)
-```
-
-However, **I'd actually leave the TOC out** for this README. GitHub's automatic outline on the right side is cleaner, and your README is already structured enough that a manually maintained TOC adds more maintenance than value.
