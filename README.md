@@ -1,509 +1,1551 @@
-# 💬 Bubbles
+````markdown
+# 💬 Bubbles — Memory-Enabled LangGraph Chatbot
 
-A LangGraph-powered chatbot with **short-term memory**, **long-term memory**,
-**tool calling**, and **ChatGPT-style auto-titled conversations** — built on
-Streamlit, Groq, and Postgres.
+<p align="center">
+  <b>🧠 A conversational AI assistant with short-term memory, long-term memory, tool calling, and ChatGPT-style conversation titles.</b>
+</p>
 
-This started as a two-file prototype (`6.app_tools.py` for the UI,
-`chatbot_backend_tools_6.py` for the graph) and was rebuilt into a modular,
-production-style project called **Bubbles**.
+<p align="center">
+  <i>
+    Built with LangGraph, Groq, Streamlit, and PostgreSQL.
+  </i>
+</p>
 
----
+<p align="center">
 
-## Table of contents
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)
+![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B?logo=streamlit&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Orchestration-orange)
+![Groq](https://img.shields.io/badge/Groq-LLM-black)
+![Postgres](https://img.shields.io/badge/PostgreSQL-Memory-336791?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white)
 
-- [What it does](#what-it-does)
-- [Architecture at a glance](#architecture-at-a-glance)
-- [How memory works](#how-memory-works)
-- [How thread titles work](#how-thread-titles-work)
-- [Project structure](#project-structure)
-- [File-by-file reference](#file-by-file-reference)
-- [Requirements](#requirements)
-- [Setup](#setup)
-- [Environment variables](#environment-variables)
-- [Running the app](#running-the-app)
-- [Using the app](#using-the-app)
-- [Multi-user notes](#multi-user-notes)
-- [Troubleshooting](#troubleshooting)
-- [Extending Bubbles](#extending-bubbles)
-- [What changed from the original prototype](#what-changed-from-the-original-prototype)
+</p>
 
 ---
 
-## What it does
+## 📌 Overview
 
-Bubbles is a chat assistant that:
+**Bubbles** is a LangGraph-powered conversational AI assistant designed around persistent memory.
 
-- Answers questions directly, or calls a **tool** (web search, weather,
-  stock price, calculator) when that gives a better answer.
-- Remembers the **full history of each conversation** (short-term memory),
-  so you can close the tab and come back to a thread later.
-- Remembers **durable facts about you** — your name, preferences, ongoing
-  projects — and carries them **across every conversation you start**
-  (long-term memory), the same way a human assistant would remember things
-  about you between meetings.
-- **Auto-names each conversation** from its first exchange, the way ChatGPT
-  or Claude name a new chat, so your sidebar is readable instead of a wall
-  of UUIDs.
+It combines:
 
-Everything is backed by a single Postgres database, run via `docker-compose`.
+- 🧠 **Short-term memory** for conversation history
+- 💾 **Long-term memory** for durable user facts
+- 🛠️ **Tool calling** for external capabilities
+- 🏷️ **Automatic conversation titles**
+- 🗃️ **PostgreSQL-backed persistence**
+- ⚡ **Streaming responses**
+- 🎨 **Streamlit interface**
+
+The project started as a small two-file prototype and was later rebuilt into a modular, production-style architecture.
+
+### From Prototype → Bubbles
+
+```text
+Original Prototype
+       │
+       ├── UI
+       ├── Graph
+       ├── Prompts
+       ├── Tools
+       └── Memory
+             │
+             ▼
+      Modular Architecture
+             │
+             ▼
+        🧠 Bubbles
+````
 
 ---
 
-## Architecture at a glance
+# ✨ What It Does
 
+## 💬 Conversational Chat
+
+Bubbles answers normal questions using a Groq-hosted LLM.
+
+When additional information or computation is useful, the model can automatically call tools.
+
+---
+
+## 🧠 Short-Term Memory
+
+Bubbles remembers the complete history of an individual conversation.
+
+For example:
+
+```text
+User:
+I'm learning LangGraph.
+
+Assistant:
+Nice! What are you building?
+
+User:
+I'm building a chatbot.
+
+Assistant:
+Since you're building a chatbot with LangGraph...
 ```
-┌─────────────┐        ┌───────────────────────────────────────────┐
-│  Streamlit   │  HTTP  │                 LangGraph                 │
-│  frontend    │◄──────►│                                           │
-│ (frontend/   │        │   START                                   │
-│   app.py)    │        │     │                                     │
-└─────────────┘        │     ▼                                     │
-                        │  remember  ──► writes new facts to LTM     │
-                        │     │           (Postgres store)           │
-                        │     ▼                                     │
-                        │  chat_node ──► reads LTM, builds prompt,   │
-                        │     │  ▲        calls the LLM               │
-                        │     │  │                                   │
-                        │     ▼  │ loop while tool calls requested   │
-                        │   tools ┘  (search / weather / stock /     │
-                        │            calculator)                     │
-                        │     │                                     │
-                        │     ▼                                     │
-                        │    END                                    │
-                        └───────────────────────────────────────────┘
-                                        │
-                                        ▼
-                        ┌───────────────────────────────────────────┐
-                        │              Postgres (docker)             │
-                        │  ┌─────────────────┐  ┌──────────────────┐ │
-                        │  │  checkpointer    │  │      store       │ │
-                        │  │  (short-term)    │  │   (long-term)    │ │
-                        │  │  full message    │  │  user facts +    │ │
-                        │  │  history / thread│  │  thread titles   │ │
-                        │  └─────────────────┘  └──────────────────┘ │
-                        └───────────────────────────────────────────┘
+
+Conversation history is persisted in PostgreSQL, allowing users to leave a conversation and return to it later.
+
+---
+
+## 💾 Long-Term Memory
+
+Bubbles can remember durable facts about a user across different conversations.
+
+For example:
+
+```text
+Chat 1:
+"I'm building a RAG application."
+
+        ↓
+
+Long-Term Memory
+
+"User is building a RAG application."
+
+        ↓
+
+Chat 2:
+
+"What should I work on next?"
+
+Assistant can use the stored fact as context.
 ```
 
-Every user turn runs through the **whole graph once**: `remember` fires
-first (looks at what you just said and decides whether anything is worth
-remembering long-term), then `chat_node` responds, calling `tools` in a loop
-for as many tool calls as it needs before producing a final answer.
+Long-term memory is associated with a **`user_id`**, rather than a conversation thread.
+
+This means the memory survives when the user starts a new chat.
 
 ---
 
-## How memory works
+## 🛠️ Tool Calling
 
-Bubbles has **two separate, deliberately different** kinds of memory. This is
-the most important concept in the whole project.
+The chatbot can decide when to call external tools.
 
-### Short-term memory (STM) — "what was said in this conversation"
+Currently supported tools include:
 
-- Implemented by LangGraph's `PostgresSaver` **checkpointer**.
-- Scope: one **thread** (one conversation).
-- Contains: the full list of messages (human, AI, tool calls, tool results)
-  for that thread.
-- Managed automatically — you never write to it directly. Every time the
-  graph runs, LangGraph appends the new messages to the thread's checkpoint.
-- This is what makes "New Chat" vs. clicking back into an old conversation
-  work — `workflow.get_state(...)` pulls a thread's full history back out.
+| Tool           | Purpose                                         |
+| -------------- | ----------------------------------------------- |
+| 🔍 Search      | DuckDuckGo web search                           |
+| 🧮 Calculator  | Addition, subtraction, multiplication, division |
+| 🌤️ Weather    | WeatherAPI.com                                  |
+| 📈 Stock Price | Alpha Vantage                                   |
 
-### Long-term memory (LTM) — "what I know about you"
-
-- Implemented by LangGraph's `PostgresStore`.
-- Scope: one **user** (`user_id`), shared across *all* of their threads.
-- Contains: short, atomic facts like `"User's name is Nitish."` or
-  `"User is building a RAG chatbot with LangGraph."`
-- Managed by `backend/memory.py`:
-  - `remember_node` runs on every single turn, before the chat model
-    responds. It sends your latest message plus everything already known
-    about you to a small, `temperature=0` LLM call that returns structured
-    output (`MemoryDecision`) — basically "here are 0+ new atomic facts,
-    and here's which ones are genuinely new vs. already known."
-  - Anything flagged `is_new=True` gets written to the store.
-  - `chat_node` then reads all known facts about the user and drops them
-    into the system prompt, so the assistant can say things like
-    *"Sure, Nitish — since you're using LangGraph already..."* instead of
-    treating you like a stranger every time.
-- **Fails safe**: if the memory-extraction LLM call errors for any reason,
-  `remember_node` just returns `{}` — it can never break or delay your
-  actual chat response.
-
-### Why they're stored separately (but in the same database)
-
-They're logically separate (different LangGraph primitives, different
-namespaces, different lifetimes) but physically share **one Postgres
-instance and one connection pool** (`backend/db.py`), so you only have to
-run and back up a single database.
-
-| | Short-term memory | Long-term memory |
-|---|---|---|
-| LangGraph object | `PostgresSaver` (checkpointer) | `PostgresStore` |
-| Keyed by | `thread_id` | `user_id` |
-| Grows with | messages in one conversation | facts learned about a person |
-| Survives "New Chat"? | No — a new thread starts empty | Yes — it's global to the user |
-| Who writes to it | LangGraph internals (automatic) | `remember_node` (LLM-decided) |
+The LLM decides when a tool is useful instead of requiring the user to manually select one.
 
 ---
 
-## How thread titles work
+## 🏷️ Automatic Conversation Titles
 
-`backend/threads.py` handles this, and it's intentionally simple:
+Every conversation receives a ChatGPT-style title after its first exchange.
 
-1. Titles are stored in the *same* Postgres store as long-term memory, just
-   under a different namespace: `("thread_titles",)`, keyed by `thread_id`.
-2. After every AI reply, the frontend calls
-   `ensure_thread_title(store, thread_id, user_message, ai_message)`.
-3. That function checks if a title already exists for the thread:
-   - **Yes** → returns it immediately, no LLM call, no cost.
-   - **No** → sends the first user message + first AI reply to a small LLM
-     call with a short prompt ("name this conversation the way ChatGPT
-     names a new chat, {N} words or fewer, no punctuation"), sanitizes the
-     result (strips quotes, trims to the word limit, falls back to "New
-     chat" if empty), and saves it.
-4. The sidebar (`frontend/app.py`) reads the title back via
-   `get_thread_title` and shows it as the button label for that thread. If
-   no title exists yet (e.g. a thread with no messages), it falls back to
-   `"New chat (1a2b3c4d)"` using the first 8 characters of the thread ID.
+For example:
 
-So each thread gets **exactly one** title-generation LLM call, the very
-first time it has something to summarize — never on every message.
+```text
+💬 Conversations
 
----
-
-## Project structure
-
+Understanding RAG
+LangGraph Memory
+Python Decorators
+Postgres Setup
+Building AI Agents
 ```
+
+Each thread receives only **one title-generation LLM call**.
+
+Existing titles are reused without additional LLM calls.
+
+---
+
+# 🏗️ Architecture at a Glance
+
+```text
+┌──────────────────────┐
+│      🎨 Streamlit    │
+│       Frontend       │
+│    frontend/app.py   │
+└──────────┬───────────┘
+           │
+           │ Graph Invocation
+           ▼
+┌─────────────────────────────────────────────┐
+│                 🔗 LangGraph                │
+│                                             │
+│                  START                      │
+│                    │                        │
+│                    ▼                        │
+│              ┌───────────┐                  │
+│              │ 🧠 remember│                  │
+│              └─────┬─────┘                  │
+│                    │                        │
+│                    ▼                        │
+│              ┌───────────┐                  │
+│              │ 💬 chat_node│                 │
+│              └─────┬─────┘                  │
+│                    │                        │
+│              Tool requested?                │
+│                │         │                  │
+│               YES        NO                 │
+│                │         │                  │
+│                ▼         ▼                  │
+│          ┌──────────┐   END                 │
+│          │ 🛠️ tools │                       │
+│          └────┬─────┘                       │
+│               │                             │
+│               └────────► chat_node          │
+│                                             │
+└─────────────────────┬───────────────────────┘
+                      │
+                      ▼
+        ┌──────────────────────────────┐
+        │       🗃️ PostgreSQL          │
+        │                              │
+        │  ┌────────────────────────┐  │
+        │  │ 🧵 PostgresSaver       │  │
+        │  │ Short-Term Memory      │  │
+        │  │                        │  │
+        │  │ Full thread history    │  │
+        │  └────────────────────────┘  │
+        │                              │
+        │  ┌────────────────────────┐  │
+        │  │ 💾 PostgresStore        │  │
+        │  │ Long-Term Memory       │  │
+        │  │                        │  │
+        │  │ User facts             │  │
+        │  │ Thread titles          │  │
+        │  └────────────────────────┘  │
+        │                              │
+        └──────────────────────────────┘
+```
+
+---
+
+# 🔄 Request Flow
+
+Every user message passes through the LangGraph workflow once.
+
+```text
+👤 User Message
+       │
+       ▼
+🧠 remember_node
+       │
+       │ Extract durable facts
+       ▼
+💬 chat_node
+       │
+       │ Read long-term memory
+       │ Build personalized prompt
+       │ Call LLM
+       ▼
+🤔 Tool required?
+       │
+   ┌───┴───┐
+   │       │
+  YES      NO
+   │       │
+   ▼       ▼
+🛠️ Tool   ✨ Final Answer
+   │
+   ▼
+💬 chat_node
+   │
+   └──────► repeat if another tool call is required
+```
+
+---
+
+# 🧠 How Memory Works
+
+Bubbles deliberately separates memory into **two different systems**.
+
+```text
+                  🧠 BUBBLES MEMORY
+                         │
+             ┌───────────┴───────────┐
+             ▼                       ▼
+      🟦 SHORT-TERM             🟩 LONG-TERM
+         MEMORY                    MEMORY
+             │                       │
+      PostgresSaver             PostgresStore
+             │                       │
+        thread_id                user_id
+             │                       │
+     One conversation          All conversations
+             │                       │
+     Full message history      Durable user facts
+```
+
+---
+
+## 🟦 Short-Term Memory — STM
+
+Short-term memory answers:
+
+> **"What was said in this conversation?"**
+
+Implemented using:
+
+```text
+PostgresSaver
+```
+
+### Scope
+
+```text
+One thread
+   │
+   ├── Human messages
+   ├── AI messages
+   ├── Tool calls
+   └── Tool results
+```
+
+### Key
+
+```text
+thread_id
+```
+
+Each conversation has its own independent history.
+
+Starting a new chat creates a new thread, so the new conversation starts with empty short-term memory.
+
+---
+
+## 🟩 Long-Term Memory — LTM
+
+Long-term memory answers:
+
+> **"What do I know about this user?"**
+
+Implemented using:
+
+```text
+PostgresStore
+```
+
+### Scope
+
+```text
+user_id
+   │
+   ├── Personal facts
+   ├── Preferences
+   ├── Projects
+   └── Other durable information
+```
+
+For example:
+
+```text
+"User is building a RAG chatbot with LangGraph."
+```
+
+This information can be available across multiple conversation threads.
+
+---
+
+# 🔍 Memory Extraction
+
+Long-term memory is not written blindly.
+
+Every user turn passes through:
+
+```text
+User Message
+     │
+     ▼
+🧠 remember_node
+     │
+     ▼
+Memory Extraction LLM
+     │
+     ▼
+Structured MemoryDecision
+     │
+     ├── No new facts
+     │
+     └── New facts
+            │
+            ▼
+       PostgresStore
+```
+
+The memory LLM determines:
+
+* Whether something is worth remembering
+* Which facts are genuinely new
+* Which existing facts should not be duplicated
+
+Structured output is represented using Pydantic models such as:
+
+```python
+MemoryItem
+MemoryDecision
+```
+
+---
+
+## 🛡️ Fail-Safe Memory
+
+Memory extraction is intentionally isolated from the main chat response.
+
+If the memory LLM fails:
+
+```text
+Memory Error
+     │
+     ▼
+remember_node → {}
+     │
+     ▼
+chat_node continues normally
+```
+
+So a memory extraction failure doesn't break the user's actual conversation.
+
+---
+
+# 🏷️ How Thread Titles Work
+
+Thread titles are stored in PostgreSQL using a separate namespace:
+
+```text
+("thread_titles",)
+```
+
+The process is:
+
+```text
+First User Message
+        │
+        ▼
+First AI Response
+        │
+        ▼
+Check Existing Title
+        │
+    ┌───┴───┐
+    │       │
+   YES      NO
+    │       │
+    ▼       ▼
+ Return   🧠 Title LLM
+ Existing     │
+              ▼
+          Sanitize Title
+              │
+              ▼
+         Save to Store
+              │
+              ▼
+         Return Title
+```
+
+### Important
+
+A thread receives **only one title-generation LLM call**.
+
+After a title exists:
+
+```text
+get_thread_title()
+        │
+        ▼
+Existing title
+        │
+        ▼
+No additional LLM call
+```
+
+This keeps the feature simple and avoids unnecessary API usage.
+
+---
+
+# 🗃️ Project Structure
+
+```text
 bubbles/
-├── docker-compose.yml     # Spins up Postgres (used for both STM and LTM)
-├── requirements.txt       # Python dependencies
-├── .env.example            # Template for your local .env
-├── README.md                # This file
-├── scripts/
-│   └── init_db.py            # One-off: create the Postgres tables
-├── backend/
+│
+├── 🐳 docker-compose.yml
+├── 📦 requirements.txt
+├── 🔐 .env.example
+├── 📄 README.md
+│
+├── 📁 scripts/
+│   └── init_db.py
+│
+├── 📁 backend/
+│   │
 │   ├── __init__.py
-│   ├── config.py              # Every env var, read once, imported everywhere else
-│   ├── db.py                    # Connection pool + checkpointer/store factories
-│   ├── llm.py                     # The 3 LLM instances (chat / memory / titles)
-│   ├── tools.py                     # calculate, get_weather, get_stock_price, search
-│   ├── state.py                       # ChatState TypedDict (the graph's schema)
-│   ├── prompts.py                       # Every prompt template, in one place
-│   ├── memory.py                          # Long-term memory: extraction node + reader
-│   ├── nodes.py                             # chat_node (personalized) + tool_node
-│   ├── threads.py                             # Thread listing + title generation
-│   └── graph.py                                 # Wires everything into the compiled graph
-└── frontend/
-    └── app.py                                     # Streamlit UI
+│   │
+│   ├── ⚙️ config.py
+│   │   └── Environment variables and configuration
+│   │
+│   ├── 🗃️ db.py
+│   │   └── PostgreSQL connection pool + memory factories
+│   │
+│   ├── 🤖 llm.py
+│   │   └── Chat, memory, and title LLM instances
+│   │
+│   ├── 🛠️ tools.py
+│   │   └── Search, weather, stock, calculator
+│   │
+│   ├── 📦 state.py
+│   │   └── ChatState definition
+│   │
+│   ├── 📝 prompts.py
+│   │   └── Centralized prompt templates
+│   │
+│   ├── 🧠 memory.py
+│   │   └── Long-term memory extraction + retrieval
+│   │
+│   ├── 🔗 nodes.py
+│   │   └── Chat node + tool node
+│   │
+│   ├── 🏷️ threads.py
+│   │   └── Thread listing + title generation
+│   │
+│   └── 🔄 graph.py
+│       └── LangGraph workflow assembly
+│
+└── 📁 frontend/
+    └── 🎨 app.py
+        └── Streamlit user interface
 ```
 
 ---
 
-## File-by-file reference
+# 📚 File-by-File Reference
 
-### `backend/config.py`
-The **only** file that calls `os.getenv(...)`. Loads `.env` via
-`python-dotenv` and exposes typed constants (`GROQ_MODEL`, `POSTGRES_URI`,
-`MAX_TITLE_WORDS`, etc.). Every other module imports from here instead of
-reading the environment directly — keeps secrets/config centralized and
-easy to audit.
+## ⚙️ `backend/config.py`
 
-### `backend/db.py`
-Owns a single `psycopg_pool.ConnectionPool` pointed at `POSTGRES_URI`, and
-hands out:
-- `get_checkpointer()` → a `PostgresSaver` (short-term memory)
-- `get_store()` → a `PostgresStore` (long-term memory)
-- `init_db()` → idempotently creates both sets of tables (`CREATE TABLE IF
-  NOT EXISTS` under the hood). Safe to call on every app start.
+The centralized configuration layer.
 
-### `backend/llm.py`
-Three `ChatGroq` instances, so nothing else in the app re-instantiates a
-model:
-- `chat_llm` (`temperature=0.4`) — the main conversational model, later
-  bound to tools in `nodes.py`.
-- `memory_llm` (`temperature=0`) — deterministic, used for structured fact
-  extraction.
-- `title_llm` (`temperature=0`) — deterministic, used for short title
-  generation.
+It is the only module responsible for reading environment variables.
 
-### `backend/tools.py`
-The four tools the model can call:
-- `search_tool` — DuckDuckGo web search.
-- `calculate(n1, n2, operation)` — add/sub/mul/div, string inputs coerced
-  to `float` (LLMs often pass numbers as strings).
-- `get_weather(place)` — calls WeatherAPI.com, requires `WEATHER_API_KEY`.
-- `get_stock_price(symbol)` — calls Alpha Vantage, requires
-  `ALPHA_VANTAGE_API_KEY`.
+Examples include:
 
-Both API-backed tools return a clear `{"error": "..."}` dict instead of
-crashing if the relevant key isn't configured — so the bot degrades
-gracefully instead of throwing an exception mid-conversation.
+```text
+GROQ_API_KEY
+GROQ_MODEL
+POSTGRES_URI
+MAX_TITLE_WORDS
+WEATHER_API_KEY
+ALPHA_VANTAGE_API_KEY
+```
 
-### `backend/state.py`
-The single `ChatState` TypedDict every node reads/writes:
+This keeps configuration and secrets centralized.
+
+---
+
+## 🗃️ `backend/db.py`
+
+Responsible for the PostgreSQL connection pool and memory infrastructure.
+
+Provides:
+
+```text
+get_checkpointer()
+get_store()
+init_db()
+```
+
+The same PostgreSQL instance is used for both short-term and long-term memory.
+
+---
+
+## 🤖 `backend/llm.py`
+
+Creates the three LLM instances used by the application:
+
+```text
+chat_llm
+memory_llm
+title_llm
+```
+
+### Chat LLM
+
+Used for normal conversations and tool calling.
+
+```text
+temperature = 0.4
+```
+
+### Memory LLM
+
+Used for deterministic fact extraction.
+
+```text
+temperature = 0
+```
+
+### Title LLM
+
+Used for deterministic conversation naming.
+
+```text
+temperature = 0
+```
+
+---
+
+## 🛠️ `backend/tools.py`
+
+Contains all model-callable tools.
+
+### 🔍 Search
+
+DuckDuckGo web search.
+
+### 🧮 Calculator
+
+Supports:
+
+```text
++
+-
+*
+/
+```
+
+Input values are converted to `float` because LLMs may provide numbers as strings.
+
+### 🌤️ Weather
+
+Uses WeatherAPI.com.
+
+Requires:
+
+```text
+WEATHER_API_KEY
+```
+
+### 📈 Stock Price
+
+Uses Alpha Vantage.
+
+Requires:
+
+```text
+ALPHA_VANTAGE_API_KEY
+```
+
+API-dependent tools return a structured error instead of crashing when a required key isn't configured.
+
+---
+
+## 📦 `backend/state.py`
+
+Defines the graph state:
+
 ```python
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 ```
-`add_messages` is LangGraph's reducer that appends new messages instead of
-overwriting the list.
 
-### `backend/prompts.py`
-Every prompt template as a plain string constant:
-- `SYSTEM_PROMPT_TEMPLATE` — the assistant's persona + injected user memory.
-- `MEMORY_EXTRACTION_PROMPT` — instructions for the fact-extraction LLM.
-- `TITLE_GENERATION_PROMPT` — instructions for the title LLM.
+`add_messages` ensures new messages are appended rather than replacing the existing history.
 
-Keeping these separate from logic makes them easy to tune without touching
-any node code.
+---
 
-### `backend/memory.py`
-- `MemoryItem` / `MemoryDecision` — Pydantic models used as **structured
-  output** schemas (`memory_llm.with_structured_output(MemoryDecision)`).
-- `get_user_details(store, user_id)` — reads all known facts about a user
-  as a newline-joined string.
-- `remember_node(state, config, *, store)` — the actual LangGraph node.
-  Only acts on `human`-type messages, calls the memory-extraction LLM, and
-  writes any new facts. Wrapped in `try/except` so it can never break the
-  chat.
+## 📝 `backend/prompts.py`
 
-### `backend/nodes.py`
-- `llm_with_tools = chat_llm.bind_tools(TOOLS)`
-- `chat_node(state, config, *, store)` — builds the system prompt (with
-  injected long-term memory), invokes the model with the full message
-  history, and returns its response (which may include tool calls).
-- `tool_node = ToolNode(TOOLS)` — LangGraph's prebuilt node that actually
-  executes whichever tool(s) the model asked for.
+Centralizes all prompts:
 
-### `backend/threads.py`
-Everything about naming and listing conversations — see
-[How thread titles work](#how-thread-titles-work) above. Also has
-`retrieve_all_thread_ids(checkpointer)`, which scans the checkpointer for
-every distinct `thread_id` it has ever seen (used to populate the sidebar
-on load).
+```text
+SYSTEM_PROMPT_TEMPLATE
+MEMORY_EXTRACTION_PROMPT
+TITLE_GENERATION_PROMPT
+```
 
-### `backend/graph.py`
-The assembly file. Calls `init_db()`, gets the checkpointer + store, builds
-the `StateGraph`:
+Keeping prompts separate from application logic makes them easier to modify and evaluate.
+
+---
+
+## 🧠 `backend/memory.py`
+
+Responsible for long-term memory.
+
+Main responsibilities:
+
+```text
+MemoryItem
+MemoryDecision
+get_user_details()
+remember_node()
+```
+
+The memory node:
+
+1. Reads the latest human message.
+2. Reads existing user memory.
+3. Sends both to the memory LLM.
+4. Receives structured output.
+5. Stores only genuinely new facts.
+
+---
+
+## 🔗 `backend/nodes.py`
+
+Contains the main LangGraph nodes.
+
+The chat model is bound to the available tools:
+
+```python
+llm_with_tools = chat_llm.bind_tools(TOOLS)
+```
+
+`chat_node()`:
+
+* Reads conversation history
+* Reads long-term user memory
+* Builds the system prompt
+* Invokes the LLM
+* Returns the response
+
+`tool_node` uses LangGraph's prebuilt `ToolNode`.
+
+---
+
+## 🏷️ `backend/threads.py`
+
+Handles:
+
+* Thread listing
+* Thread IDs
+* Thread titles
+* Title generation
+* Title retrieval
+
+It also provides:
+
+```text
+retrieve_all_thread_ids()
+```
+
+which scans the checkpointer for known conversation threads.
+
+---
+
+## 🔄 `backend/graph.py`
+
+The central LangGraph assembly point.
+
+The workflow is conceptually:
 
 ```python
 graph.add_edge(START, "remember")
 graph.add_edge("remember", "chat_node")
-graph.add_conditional_edges("chat_node", tools_condition)  # -> "tools" or END
+
+graph.add_conditional_edges(
+    "chat_node",
+    tools_condition
+)
+
 graph.add_edge("tools", "chat_node")
-
-workflow = graph.compile(checkpointer=checkpointer, store=store)
 ```
 
-`workflow`, `checkpointer`, and `store` are all exported from here and
-imported directly by the frontend — there's no other place in the app that
-constructs graph-related objects.
-
-### `frontend/app.py`
-The Streamlit UI:
-- Sidebar: editable **User ID** field (the long-term-memory key), **New
-  Chat** button, and a scrollable list of past conversations (labeled by
-  their auto-generated title).
-- Main pane: renders the current thread's message history, a chat input
-  box, and streams the model's response token-by-token via
-  `workflow.stream(..., stream_mode="messages")`.
-- After every AI reply, calls `ensure_thread_title(...)` to (maybe) name
-  the thread.
-
-### `scripts/init_db.py`
-A standalone CLI entry point that just calls `backend.db.init_db()` and
-prints a confirmation. Useful for running the "create tables" step
-explicitly and separately from app startup (a more typical production
-pattern than relying on it happening automatically on import).
+The compiled graph is exported for use by the frontend.
 
 ---
 
-## Requirements
+## 🎨 `frontend/app.py`
 
-- **Python 3.11+** (Postgres client libraries here are tested against modern
-  3.x; anything reasonably recent should work).
-- **Docker** (or an existing Postgres 14+ instance you point at instead).
-- A **Groq API key** — [console.groq.com](https://console.groq.com) — this
-  is the only required external credential.
-- *(Optional)* a **WeatherAPI.com** key and an **Alpha Vantage** key, only
-  if you want the `get_weather` / `get_stock_price` tools to actually work.
-  Without them, those two tools just return a clear error instead of
-  crashing.
+The Streamlit interface provides:
+
+* 👤 User ID input
+* ➕ New Chat
+* 💬 Chat interface
+* 📚 Previous conversations
+* 🏷️ Automatic titles
+* ⚡ Streaming responses
+
+The frontend invokes the compiled LangGraph workflow instead of containing the chatbot logic itself.
 
 ---
 
-## Setup
+# 🛠️ Tech Stack
+
+| Layer                | Technology              |
+| -------------------- | ----------------------- |
+| 🎨 Frontend          | Streamlit               |
+| 🤖 LLM               | Groq + `langchain-groq` |
+| 🔗 Orchestration     | LangGraph               |
+| 🗃️ Database         | PostgreSQL              |
+| 🧠 Short-Term Memory | `PostgresSaver`         |
+| 💾 Long-Term Memory  | `PostgresStore`         |
+| 🐳 Database Runtime  | Docker Compose          |
+| 📦 Structured Output | Pydantic                |
+| 🔍 Web Search        | DuckDuckGo              |
+| 🌤️ Weather          | WeatherAPI.com          |
+| 📈 Stock Data        | Alpha Vantage           |
+
+---
+
+# 📋 Requirements
+
+You need:
+
+* 🐍 Python **3.11+**
+* 🐳 Docker
+* 🗃️ PostgreSQL 14+ if using an external database
+* 🔑 Groq API key
+
+### Optional
+
+These are only required if you want the corresponding tools:
+
+* 🌤️ WeatherAPI.com API key
+* 📈 Alpha Vantage API key
+
+---
+
+# 🚀 Setup
+
+## 1️⃣ Clone the Repository
 
 ```bash
-# 1. Unzip / clone the project, then cd into it
-cd bubbles
+git clone https://github.com/<your-username>/Bubbles.git
+cd Bubbles
+```
 
-# 2. Start Postgres (reads docker-compose.yml)
+---
+
+## 2️⃣ Start PostgreSQL
+
+Using Docker Compose:
+
+```bash
 docker compose up -d
-# (older Docker installs: `docker-compose up -d`)
-
-# 3. Create a virtual environment (recommended) and install dependencies
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# 4. Create your local env file
-cp .env.example .env
-# then open .env and fill in GROQ_API_KEY at minimum
-
-# 5. (Optional but recommended) create the DB tables explicitly
-python scripts/init_db.py
-
-# 6. Run it
-streamlit run frontend/app.py
 ```
 
-Streamlit will print a local URL (usually `http://localhost:8501`) and
-should open it in your browser automatically.
+For older Docker installations:
+
+```bash
+docker-compose up -d
+```
 
 ---
 
-## Environment variables
+## 3️⃣ Create a Virtual Environment
 
-All of these live in `.env` (copy `.env.example` to start). None of them
-should ever be committed to source control.
+### Windows
 
-| Variable | Required? | Default | What it's for |
-|---|---|---|---|
-| `GROQ_API_KEY` | **Yes** | — | Auth for every LLM call (chat, memory extraction, titles). Get one at console.groq.com. |
-| `GROQ_MODEL` | No | `meta-llama/llama-4-scout-17b-16e-instruct` | Which Groq-hosted model to use for all three LLM roles. |
-| `POSTGRES_URI` | No | `postgresql://postgres:postgres@localhost:5442/postgres?sslmode=disable` | Connection string for both short-term and long-term memory. Matches `docker-compose.yml` by default. |
-| `WEATHER_API_KEY` | No | — | Enables the `get_weather` tool (weatherapi.com). Without it, the tool returns `{"error": "..."}`. |
-| `ALPHA_VANTAGE_API_KEY` | No | — | Enables the `get_stock_price` tool (alphavantage.co). Without it, the tool returns `{"error": "..."}`. |
-| `MAX_TITLE_WORDS` | No | `6` | Max word count for auto-generated thread titles. |
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
 
-No quotes needed around values (`KEY=value`, not `KEY="value"`) unless the
-value itself contains a `#` or a space — none of the defaults do.
+### Linux / macOS
+
+```bash
+python -m venv venv
+source venv/bin/activate
+```
 
 ---
 
-## Running the app
+## 4️⃣ Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 5️⃣ Configure Environment Variables
+
+Copy:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`.
+
+At minimum:
+
+```env
+GROQ_API_KEY=your-groq-api-key
+```
+
+---
+
+## 6️⃣ Initialize the Database
+
+Run:
+
+```bash
+python scripts/init_db.py
+```
+
+This creates the required PostgreSQL tables.
+
+---
+
+## 7️⃣ Run Bubbles
 
 ```bash
 streamlit run frontend/app.py
 ```
 
-Run this from the **project root** (`bubbles/`), not from inside
-`frontend/` — the script adds the project root to `sys.path` on the
-assumption that's where it was launched from.
+Streamlit will provide a local URL, usually:
 
-To stop: `Ctrl+C` in the terminal running Streamlit, and
-`docker compose down` to stop Postgres (add `-v` to also delete all stored
-data: `docker compose down -v`).
+```text
+http://localhost:8501
+```
 
 ---
 
-## Using the app
+# 🔐 Environment Variables
 
-1. **User ID** (sidebar) — this is the key long-term memory is stored
-   under. Leave it as `default_user` for solo use, or change it to test how
-   memory differs between "users."
-2. **New Chat** — starts a fresh thread with empty short-term memory (long-
-   term memory about you still carries over, since that's user-scoped, not
-   thread-scoped).
-3. **My Conversations** (sidebar) — click any past thread to reload its
-   full history. Threads are labeled with their auto-generated title once
-   one exists.
-4. **Chat box** — type normally. The model will call tools on its own when
-   useful (e.g. "what's the weather in Kolkata?" or "search for the latest
-   LangGraph release").
-5. Tell it something about yourself (e.g. *"I'm building a RAG app with
-   LangGraph"*) and start a **New Chat** — it should recall that fact in
-   the new conversation, since it's stored in long-term memory.
+| Variable                | Required? | Default                                     | Purpose                 |
+| ----------------------- | --------- | ------------------------------------------- | ----------------------- |
+| `GROQ_API_KEY`          | ✅ Yes     | —                                           | Authentication for Groq |
+| `GROQ_MODEL`            | ❌ No      | `meta-llama/llama-4-scout-17b-16e-instruct` | Groq model              |
+| `POSTGRES_URI`          | ❌ No      | Local Docker PostgreSQL                     | Database connection     |
+| `WEATHER_API_KEY`       | ❌ No      | —                                           | Weather tool            |
+| `ALPHA_VANTAGE_API_KEY` | ❌ No      | —                                           | Stock price tool        |
+| `MAX_TITLE_WORDS`       | ❌ No      | `6`                                         | Maximum title length    |
+
+> ⚠️ Never commit `.env` or real API keys to GitHub.
 
 ---
 
-## Multi-user notes
+# ▶️ Running the App
 
-The original prototype had no concept of "user" — one anonymous Streamlit
-session. Long-term memory needs *some* stable identity to attach facts to,
-so Bubbles adds a plain **User ID** text field in the sidebar.
+Run from the project root:
 
-In a real deployment, you'd replace that text box with whatever your actual
-auth system provides (a logged-in user's ID, an email, etc.) — nothing else
-in the backend needs to change, since `user_id` is just threaded through
-`config["configurable"]["user_id"]` on every graph invocation.
+```bash
+streamlit run frontend/app.py
+```
 
----
+### Start PostgreSQL
 
-## Troubleshooting
+```bash
+docker compose up -d
+```
 
-**"connection refused" / can't reach Postgres**
-Make sure `docker compose up -d` actually started the container
-(`docker ps` should show `bubbles_postgres` running) and that
-`POSTGRES_URI` in `.env` matches the port in `docker-compose.yml`
-(`5442` by default, *not* Postgres's usual `5432`).
+### Stop PostgreSQL
 
-**`ModuleNotFoundError: No module named 'backend'`**
-You launched Streamlit from the wrong directory. Run
-`streamlit run frontend/app.py` from the `bubbles/` project root.
+```bash
+docker compose down
+```
 
-**Weather / stock tool always returns an error**
-Those two tools require `WEATHER_API_KEY` / `ALPHA_VANTAGE_API_KEY` in
-`.env`. If you don't need them, this is expected and harmless — the rest
-of the app works fine without them.
+### Delete all database data
 
-**Titles never show up / stay as "New chat (xxxxxxxx)"**
-A title is only generated after the *first AI reply* in a thread. If a
-thread has no messages yet (e.g. you clicked "New Chat" but haven't typed
-anything), it won't have a title yet — that's expected.
+⚠️ This permanently removes stored conversations and long-term memory:
 
-**Port already in use (`5442` or `8501`)**
-Something else on your machine is using that port. Either stop that
-process, or change the port mapping in `docker-compose.yml` (and update
-`POSTGRES_URI` to match) / pass `--server.port` to `streamlit run`.
-
-**I want to wipe everything and start fresh**
-`docker compose down -v` deletes the Postgres volume entirely (all short-
-term and long-term memory, gone). Then `docker compose up -d` and
-`python scripts/init_db.py` to recreate empty tables.
+```bash
+docker compose down -v
+```
 
 ---
 
-## Extending Bubbles
+# 💻 Using Bubbles
 
-Some natural next steps, roughly in order of effort:
+### 1️⃣ Set a User ID
 
-- **Semantic memory search** — swap the plain-text long-term memory store
-  for one using `pgvector`, so `chat_node` can retrieve only the *most
-  relevant* facts about a user instead of dumping all of them into the
-  prompt every time (matters once a user has accumulated a lot of memory).
-- **Real authentication** — replace the sidebar User ID text field with an
-  actual login flow (e.g. Streamlit's built-in auth, or a reverse proxy
-  with SSO), and derive `user_id` from the authenticated session.
-- **Thread deletion / rename** — `backend/threads.py` already has
-  `set_thread_title`; a delete/rename UI in the sidebar is a small
-  addition on top of that.
-- **Editable long-term memory** — a settings page that lists everything
-  Bubbles has "remembered" about you and lets you delete individual facts
-  (good practice for any app storing personal data).
-- **Swap or add LLM providers** — `backend/llm.py` is the only place model
-  instances are constructed, so adding an OpenAI/Anthropic fallback or
-  swapping providers entirely is a localized change.
+The sidebar contains a User ID field.
+
+For example:
+
+```text
+default_user
+```
+
+The User ID determines which long-term memory belongs to the current user.
 
 ---
 
-## What changed from the original prototype
+### 2️⃣ Start a New Chat
 
-Beyond the three headline asks (long-term memory, auto-titled threads,
-production-style file split), a few latent issues from the original code
-were fixed along the way:
+Click:
 
-- The hardcoded WeatherAPI key inside `get_weather` is now read from
-  `WEATHER_API_KEY` instead of being committed in source.
-- `generate_thread_id()` now returns a plain `str(uuid4())` instead of a
-  `uuid.UUID` object — the original mixed UUID objects (in session state)
-  with whatever type the checkpointer returns from
-  `configurable.thread_id`, which could silently break thread
-  deduplication/matching.
-- Sidebar thread buttons now use an explicit, unique `key=` per thread,
-  since two threads can now share a display label (their generated title)
-  before Streamlit would otherwise raise a duplicate-widget-ID error.
-- The SQLite checkpointer was swapped for a Postgres one, so short-term and
-  long-term memory share one database and one connection pool instead of
-  two separate storage engines.
+```text
+➕ New Chat
+```
+
+This creates a new thread.
+
+Short-term memory starts fresh, but long-term memory remains available.
+
+---
+
+### 3️⃣ Continue Previous Conversations
+
+Select a conversation from the sidebar.
+
+The complete thread history is restored from PostgreSQL.
+
+---
+
+### 4️⃣ Use Tools Naturally
+
+Ask something like:
+
+```text
+What's the weather in Kolkata?
+```
+
+or:
+
+```text
+Search for the latest LangGraph release.
+```
+
+or:
+
+```text
+Calculate 125 * 48.
+```
+
+The model can decide whether a tool is necessary.
+
+---
+
+### 5️⃣ Test Long-Term Memory
+
+Tell Bubbles:
+
+```text
+I'm building a RAG application using LangGraph.
+```
+
+Then click:
+
+```text
+➕ New Chat
+```
+
+Ask:
+
+```text
+What project am I building?
+```
+
+The assistant can retrieve the stored user fact from long-term memory.
+
+---
+
+# 👥 Multi-User Design
+
+The prototype originally had no concept of users.
+
+Bubbles introduces:
+
+```text
+user_id
+```
+
+as the identity key for long-term memory.
+
+The architecture becomes:
+
+```text
+                👤 User
+                  │
+             user_id = A
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+   Thread A1             Thread A2
+        │                   │
+        └─────────┬─────────┘
+                  ▼
+          🧠 Shared LTM
+```
+
+Different users can therefore have independent long-term memories.
+
+For a real deployment, the sidebar User ID could be replaced with an authentication system.
+
+The backend architecture already passes `user_id` through the graph configuration.
+
+---
+
+# 🛡️ Error Handling
+
+Bubbles is designed to degrade gracefully.
+
+### Missing Weather API Key
+
+```text
+get_weather()
+      │
+      ▼
+No API key
+      │
+      ▼
+{"error": "..."}
+```
+
+The application continues running.
+
+### Missing Stock API Key
+
+The stock tool similarly returns a clear error rather than crashing the conversation.
+
+### Memory Extraction Failure
+
+```text
+Memory LLM fails
+      │
+      ▼
+remember_node → {}
+      │
+      ▼
+Normal chat continues
+```
+
+This keeps long-term memory from becoming a single point of failure for the chatbot.
+
+---
+
+# 🐛 Troubleshooting
+
+## ❌ PostgreSQL Connection Refused
+
+Make sure PostgreSQL is running:
+
+```bash
+docker ps
+```
+
+Then verify:
+
+```text
+POSTGRES_URI
+```
+
+matches the port configured in:
+
+```text
+docker-compose.yml
+```
+
+The default project configuration uses:
+
+```text
+5442
+```
+
+rather than PostgreSQL's usual `5432`.
+
+---
+
+## ❌ `ModuleNotFoundError: No module named 'backend'`
+
+Make sure you're running Streamlit from the project root:
+
+```bash
+cd bubbles
+streamlit run frontend/app.py
+```
+
+---
+
+## ❌ Weather or Stock Tool Returns an Error
+
+Add the required API key to `.env`:
+
+```env
+WEATHER_API_KEY=your-key
+```
+
+or:
+
+```env
+ALPHA_VANTAGE_API_KEY=your-key
+```
+
+---
+
+## ❌ Conversation Title Not Showing
+
+A title is generated only after the first AI response.
+
+A newly created empty thread will therefore display something similar to:
+
+```text
+New chat (1a2b3c4d)
+```
+
+until the first conversation exchange occurs.
+
+---
+
+## ❌ Port Already in Use
+
+If port `5442` or `8501` is already occupied:
+
+* Stop the process using the port, or
+* Change the PostgreSQL port mapping
+* Update `POSTGRES_URI` accordingly
+
+For Streamlit, you can also use:
+
+```bash
+streamlit run frontend/app.py --server.port 8502
+```
+
+---
+
+# 🔮 Extending Bubbles
+
+## 🧠 Semantic Long-Term Memory
+
+Currently, long-term memory consists of stored facts.
+
+A future implementation could use:
+
+```text
+PostgreSQL
+    │
+    └── pgvector
+          │
+          ▼
+   Semantic Memory Search
+```
+
+This would allow the assistant to retrieve only the most relevant memories rather than injecting every stored fact into the prompt.
+
+---
+
+## 🔐 Real Authentication
+
+Replace the User ID text field with an actual authentication system.
+
+For example:
+
+```text
+Login
+  │
+  ▼
+Authenticated User
+  │
+  ▼
+user_id
+  │
+  ▼
+LangGraph
+```
+
+The underlying memory architecture can remain largely unchanged.
+
+---
+
+## ✏️ Thread Rename / Delete
+
+Add sidebar controls for:
+
+```text
+✏️ Rename
+🗑️ Delete
+```
+
+The existing thread abstraction provides a natural place for these operations.
+
+---
+
+## 🧠 Editable Memory
+
+A useful future feature would be a memory settings page:
+
+```text
+┌──────────────────────────────┐
+│ 🧠 What Bubbles Remembers    │
+├──────────────────────────────┤
+│ • Building a RAG application  │ 🗑️
+│ • Uses LangGraph              │ 🗑️
+│ • Learning Python             │ 🗑️
+└──────────────────────────────┘
+```
+
+Users could inspect and delete individual memories.
+
+---
+
+## 🔄 Multiple LLM Providers
+
+Because model initialization is centralized in:
+
+```text
+backend/llm.py
+```
+
+additional providers could be introduced without changing the entire application architecture.
+
+Possible future providers include:
+
+```text
+Groq
+OpenAI
+Anthropic
+Local Models
+```
+
+---
+
+# 🔧 What Changed From the Original Prototype
+
+Bubbles evolved significantly from the original two-file implementation.
+
+### 🏗️ Modular Architecture
+
+**Before:**
+
+```text
+6.app_tools.py
+chatbot_backend_tools_6.py
+```
+
+**After:**
+
+```text
+backend/
+frontend/
+scripts/
+```
+
+Responsibilities are now separated into dedicated modules.
+
+---
+
+### 💾 Long-Term Memory
+
+Added:
+
+```text
+PostgresStore
+```
+
+for persistent user-level facts.
+
+---
+
+### 🧵 Persistent Short-Term Memory
+
+The original SQLite-based checkpointer was replaced with:
+
+```text
+PostgresSaver
+```
+
+so conversation history is persisted in PostgreSQL.
+
+---
+
+### 🏷️ Automatic Thread Titles
+
+Added an LLM-powered title-generation system.
+
+Each thread gets one generated title.
+
+---
+
+### 🔐 Secret Management
+
+Hardcoded API credentials were removed.
+
+Secrets are now loaded from:
+
+```text
+.env
+```
+
+---
+
+### 🆔 Thread ID Handling
+
+Thread IDs are normalized to plain strings instead of mixing UUID objects with string values.
+
+This avoids potential thread matching and deduplication problems.
+
+---
+
+### 🎨 Streamlit Improvements
+
+Thread buttons use explicit unique widget keys so multiple conversations with identical generated titles don't cause duplicate Streamlit widget IDs.
+
+---
+
+# 📊 Architecture Principles
+
+Bubbles follows a few important design principles:
+
+### 1. 🧩 Separation of Concerns
+
+```text
+Frontend
+   │
+   ▼
+Graph
+   │
+   ├── Nodes
+   ├── Memory
+   ├── Tools
+   └── LLM
+```
+
+Each component has a focused responsibility.
+
+---
+
+### 2. 🧠 Memory Separation
+
+```text
+STM → Thread-specific
+LTM → User-specific
+```
+
+This distinction makes the memory system easier to reason about and extend.
+
+---
+
+### 3. 🔐 Centralized Configuration
+
+Environment variables are read in one place:
+
+```text
+backend/config.py
+```
+
+---
+
+### 4. 🛡️ Graceful Failure
+
+Optional services should fail without taking down the entire chatbot.
+
+```text
+Optional Tool Failure
+        ↓
+Clear Error
+        ↓
+Chat Continues
+```
+
+---
+
+### 5. 🔄 Graph-Based Orchestration
+
+LangGraph manages the control flow:
+
+```text
+START
+  ↓
+remember
+  ↓
+chat
+  ↓
+tools? ── YES ──► tools
+  │                 │
+  │                 ▼
+  └────────────── chat
+  │
+  NO
+  ↓
+END
+```
+
+---
+
+# 🗺️ Roadmap
+
+* [ ] 🧠 Semantic long-term memory with `pgvector`
+* [ ] 🔐 Real authentication
+* [ ] ✏️ Thread rename functionality
+* [ ] 🗑️ Thread deletion
+* [ ] 🧠 Editable memory management
+* [ ] 🧪 Automated tests
+* [ ] 📊 Memory and tool-call observability
+* [ ] 🔄 Multi-provider LLM support
+* [ ] 🚀 Production deployment
+
+---
+
+# ⭐ Why Bubbles?
+
+Bubbles explores the architecture behind a more persistent AI assistant rather than a simple chatbot.
+
+The core idea is:
+
+```text
+                 💬 Conversation
+                        │
+                        ▼
+                 🔗 LangGraph
+                        │
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+      🧠 Memory      🛠️ Tools      🤖 LLM
+          │             │             │
+          └─────────────┼─────────────┘
+                        ▼
+                  🗃️ PostgreSQL
+                        │
+                        ▼
+                  ✨ AI Response
+```
+
+It demonstrates how **conversation state, persistent user memory, tool calling, and LLM orchestration** can work together in a single application.
+
+---
+
+# 🧈 Bubbles in One Line
+
+> **A persistent LangGraph chatbot that remembers conversations, learns durable user facts, calls tools when needed, and organizes chats automatically.**
+
+---
+
+## 👨‍💻 Author
+
+**Sourashish Das**
+
+Built as an exploration of:
+
+**Generative AI • LangGraph • LLM Tool Calling • Memory Systems • PostgreSQL • Streamlit**
+
+---
+
+<p align="center">
+  💬 <b>Talk to Bubbles.</b>
+  <br>
+  🧠 <i>It remembers.</i>
+</p>
+```
+
+### One thing I deliberately fixed
+
+Your original Table of Contents had links like:
+
+```text
+https://claude.ai/chat/...
+```
+
+Those **should not be in your GitHub README**. GitHub automatically handles internal heading links, so if you want a TOC, use:
+
+```markdown
+## 📚 Table of Contents
+
+- [✨ What It Does](#-what-it-does)
+- [🏗️ Architecture at a Glance](#️-architecture-at-a-glance)
+- [🧠 How Memory Works](#-how-memory-works)
+- [🏷️ How Thread Titles Work](#️-how-thread-titles-work)
+- [🗃️ Project Structure](#️-project-structure)
+- [🛠️ Tech Stack](#️-tech-stack)
+- [🚀 Setup](#-setup)
+- [🔮 Extending Bubbles](#-extending-bubbles)
+- [🗺️ Roadmap](#️-roadmap)
+```
+
+However, **I'd actually leave the TOC out** for this README. GitHub's automatic outline on the right side is cleaner, and your README is already structured enough that a manually maintained TOC adds more maintenance than value.
