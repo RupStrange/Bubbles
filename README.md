@@ -1521,9 +1521,3 @@ Built as an exploration of:
   <br>
   🧠 <i>It remembers.</i>
 </p>
-```
-
-### One thing I deliberately fixed
-
-Your original Table of Contents had links like:
-
