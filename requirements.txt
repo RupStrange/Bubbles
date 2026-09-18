@@ -1,0 +1,16 @@
+streamlit
+python-dotenv
+pydantic
+
+langchain-core
+langchain-groq
+langchain-community
+
+langgraph
+langgraph-checkpoint-postgres
+
+psycopg[binary,pool]
+
+duckduckgo-search
+ddgs
+requests
