@@ -16,7 +16,13 @@ THREAD_TITLE_NAMESPACE = ("thread_titles",)
 
 
 def retrieve_all_thread_ids(checkpointer) -> List[str]:
-    """Every distinct thread_id the checkpointer has ever seen."""
+    """
+    Every distinct thread_id the checkpointer has ever seen, across ALL users.
+
+    Not for the sidebar - that must use backend.user_threads.list_user_thread_ids
+    so users only see their own conversations. This is kept for admin/migration
+    use (see scripts/migrate_thread_owners.py).
+    """
     thread_ids = set()
     for checkpoint in checkpointer.list(None):
         thread_ids.add(checkpoint.config["configurable"]["thread_id"])
